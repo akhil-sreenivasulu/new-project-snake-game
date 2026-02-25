@@ -4,6 +4,7 @@ import { initialGameState, legalMovesFrom, makeMove, sameSquare } from "./chess.
 const GOOGLE_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
 const SESSION_USER_KEY = "akhil_chess_user";
 const SESSION_GAME_KEY = "akhil_chess_game";
+const SESSION_TIMELINE_KEY = "akhil_chess_timeline";
 
 const PIECE_SYMBOLS = {
   wp: "♙",
@@ -22,6 +23,35 @@ const PIECE_SYMBOLS = {
 
 function pieceKey(piece) {
   return piece ? `${piece.color}${piece.type}` : "";
+}
+
+function clearSelectionState(game) {
+  return { ...game, selected: null, legalMoves: [] };
+}
+
+function loadTimelineFromSession() {
+  try {
+    const rawTimeline = sessionStorage.getItem(SESSION_TIMELINE_KEY);
+    if (rawTimeline) {
+      const parsed = JSON.parse(rawTimeline);
+      if (Array.isArray(parsed.states) && parsed.states.length > 0) {
+        const states = parsed.states.map(clearSelectionState);
+        const maxIndex = states.length - 1;
+        const index = Math.max(0, Math.min(Number(parsed.index) || 0, maxIndex));
+        return { states, index };
+      }
+    }
+
+    const rawGame = sessionStorage.getItem(SESSION_GAME_KEY);
+    if (rawGame) {
+      const game = clearSelectionState(JSON.parse(rawGame));
+      return { states: [game], index: 0 };
+    }
+  } catch {
+    return { states: [initialGameState()], index: 0 };
+  }
+
+  return { states: [initialGameState()], index: 0 };
 }
 
 function decodeJwtPayload(token) {
@@ -43,28 +73,31 @@ function loadUserFromSession() {
   }
 }
 
-function loadGameFromSession() {
-  try {
-    const raw = sessionStorage.getItem(SESSION_GAME_KEY);
-    return raw ? JSON.parse(raw) : initialGameState();
-  } catch {
-    return initialGameState();
-  }
+function formatMove(move) {
+  if (move.castle === "K") return "O-O";
+  if (move.castle === "Q") return "O-O-O";
+  const upperPiece = move.piece ? move.piece.toUpperCase() : "";
+  const piece = upperPiece === "P" ? "" : upperPiece;
+  const capture = move.capture ? "x" : "-";
+  const promotion = move.promotion ? `=${move.promotion.toUpperCase()}` : "";
+  return `${piece}${move.from}${capture}${move.to}${promotion}`;
 }
 
 function App() {
   const [user, setUser] = useState(() => loadUserFromSession());
-  const [game, setGame] = useState(() => loadGameFromSession());
+  const [timeline, setTimeline] = useState(() => loadTimelineFromSession());
   const [message, setMessage] = useState("");
   const googleBtnRef = useRef(null);
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-  const moveCount = game.moveList.length;
-  const lastMove = moveCount > 0 ? game.moveList[moveCount - 1] : null;
+  const game = timeline.states[timeline.index] || initialGameState();
+  const currentPly = game.moveList.length;
+  const allMoves = timeline.states[timeline.states.length - 1]?.moveList || [];
 
   useEffect(() => {
+    sessionStorage.setItem(SESSION_TIMELINE_KEY, JSON.stringify(timeline));
     sessionStorage.setItem(SESSION_GAME_KEY, JSON.stringify(game));
-  }, [game]);
+  }, [timeline, game]);
 
   useEffect(() => {
     if (user) {
@@ -141,34 +174,78 @@ function App() {
     [game.legalMoves]
   );
 
+  function updateCurrentGame(mutator) {
+    setTimeline((prev) => {
+      const states = [...prev.states];
+      states[prev.index] = mutator(states[prev.index]);
+      return { ...prev, states };
+    });
+  }
+
+  function pushNextMove(move) {
+    setTimeline((prev) => {
+      const current = clearSelectionState(prev.states[prev.index]);
+      const next = makeMove(current, move);
+      if (next === current) return prev;
+      const states = prev.states.slice(0, prev.index + 1);
+      states.push(clearSelectionState(next));
+      return { states, index: states.length - 1 };
+    });
+  }
+
   function onSquareClick(r, c) {
-    if (game.over) return;
+    if (game.over || timeline.index !== timeline.states.length - 1) return;
+
     const clicked = { r, c };
     const piece = game.board[r][c];
 
     if (game.selected) {
       const move = game.legalMoves.find((m) => m.to.r === r && m.to.c === c);
       if (move) {
-        setGame((prev) => makeMove(prev, move));
+        pushNextMove(move);
         return;
       }
       if (piece && piece.color === game.turn) {
         const legalMoves = legalMovesFrom(game, clicked);
-        setGame((prev) => ({ ...prev, selected: clicked, legalMoves }));
+        updateCurrentGame((current) => ({ ...current, selected: clicked, legalMoves }));
         return;
       }
-      setGame((prev) => ({ ...prev, selected: null, legalMoves: [] }));
+      updateCurrentGame((current) => ({ ...current, selected: null, legalMoves: [] }));
       return;
     }
 
     if (piece && piece.color === game.turn) {
       const legalMoves = legalMovesFrom(game, clicked);
-      setGame((prev) => ({ ...prev, selected: clicked, legalMoves }));
+      updateCurrentGame((current) => ({ ...current, selected: clicked, legalMoves }));
     }
   }
 
   function resetGame() {
-    setGame(initialGameState());
+    const next = initialGameState();
+    setTimeline({ states: [next], index: 0 });
+  }
+
+  function undoMove() {
+    setTimeline((prev) => {
+      if (prev.index === 0) return prev;
+      const nextIndex = prev.index - 1;
+      return { ...prev, index: nextIndex };
+    });
+  }
+
+  function redoMove() {
+    setTimeline((prev) => {
+      if (prev.index >= prev.states.length - 1) return prev;
+      const nextIndex = prev.index + 1;
+      return { ...prev, index: nextIndex };
+    });
+  }
+
+  function jumpToPly(ply) {
+    setTimeline((prev) => {
+      const bounded = Math.max(0, Math.min(ply, prev.states.length - 1));
+      return { ...prev, index: bounded };
+    });
   }
 
   function logout() {
@@ -205,51 +282,87 @@ function App() {
       </header>
 
       <section className="content">
-        <div className="board" aria-label="Chess board">
-          {game.board.map((row, r) =>
-            row.map((piece, c) => {
-              const dark = (r + c) % 2 === 1;
-              const selected = sameSquare(game.selected, { r, c });
-              const isTarget = legalTargets.has(`${r},${c}`);
-              const className = [
-                "square",
-                dark ? "dark" : "light",
-                selected ? "selected" : "",
-                isTarget ? "target" : "",
-              ]
-                .filter(Boolean)
-                .join(" ");
-              return (
-                <button
-                  key={`${r}-${c}`}
-                  type="button"
-                  className={className}
-                  onClick={() => onSquareClick(r, c)}
-                >
-                  <span className="piece">{PIECE_SYMBOLS[pieceKey(piece)] || ""}</span>
-                </button>
-              );
-            })
-          )}
+        <div className="board-wrap">
+          <div className="board" aria-label="Chess board">
+            {game.board.map((row, r) =>
+              row.map((piece, c) => {
+                const dark = (r + c) % 2 === 1;
+                const selected = sameSquare(game.selected, { r, c });
+                const isTarget = legalTargets.has(`${r},${c}`);
+                const className = [
+                  "square",
+                  dark ? "dark" : "light",
+                  selected ? "selected" : "",
+                  isTarget ? "target" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                return (
+                  <button
+                    key={`${r}-${c}`}
+                    type="button"
+                    className={className}
+                    onClick={() => onSquareClick(r, c)}
+                  >
+                    <span className="piece">{PIECE_SYMBOLS[pieceKey(piece)] || ""}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
         </div>
 
         <aside className="sidebar">
-          <button type="button" onClick={resetGame}>
-            New game
-          </button>
+          <div className="panel-actions">
+            <button type="button" onClick={resetGame}>
+              New game
+            </button>
+            <button type="button" onClick={undoMove} disabled={timeline.index === 0}>
+              Undo
+            </button>
+            <button
+              type="button"
+              onClick={redoMove}
+              disabled={timeline.index >= timeline.states.length - 1}
+            >
+              Redo
+            </button>
+          </div>
+
           <p>Turn: {game.turn === "w" ? "White" : "Black"}</p>
-          <p>Total moves: {moveCount}</p>
-          <p>
-            Last move:{" "}
-            {lastMove
-              ? `${lastMove.piece}${lastMove.from}-${lastMove.to}${
-                  lastMove.capture ? "x" : ""
-                }${lastMove.promotion ? `=${lastMove.promotion.toUpperCase()}` : ""}`
-              : "-"}
-          </p>
+          <p>Total moves: {allMoves.length}</p>
+          <p>Current replay position: {currentPly}</p>
           {game.over ? (
             <p>{game.winner ? `${game.winner === "w" ? "White" : "Black"} wins` : "Draw"}</p>
           ) : null}
+
+          <div className="move-list-wrap">
+            <p className="move-list-title">Move list</p>
+            <button
+              type="button"
+              className={`move-item ${currentPly === 0 ? "active" : ""}`}
+              onClick={() => jumpToPly(0)}
+            >
+              0. Start position
+            </button>
+            {allMoves.map((move, index) => {
+              const ply = index + 1;
+              const moveNo = Math.ceil(ply / 2);
+              const prefix = ply % 2 === 1 ? `${moveNo}.` : `${moveNo}...`;
+              const isActive = currentPly === ply;
+              const isPlayed = currentPly >= ply;
+              return (
+                <button
+                  key={`${move.from}-${move.to}-${index}`}
+                  type="button"
+                  className={`move-item ${isActive ? "active" : ""} ${isPlayed ? "played" : ""}`}
+                  onClick={() => jumpToPly(ply)}
+                >
+                  {prefix} {formatMove(move)}
+                </button>
+              );
+            })}
+          </div>
         </aside>
       </section>
     </main>
