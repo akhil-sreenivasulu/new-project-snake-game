@@ -3,41 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Snake</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <title>Akhil Chess</title>
   </head>
   <body>
-    <main class="app">
-      <header class="hud">
-        <h1>Snake</h1>
-        <div class="hud-meta">
-          <p>Score: <span id="score">0</span></p>
-          <p id="status">Running</p>
-        </div>
-      </header>
-
-      <section
-        id="game-board"
-        class="board"
-        aria-label="Snake game board"
-        role="img"
-      ></section>
-
-      <section class="controls" aria-label="Game controls">
-        <button id="restart-btn" type="button">Restart</button>
-        <button id="pause-btn" type="button">Pause</button>
-      </section>
-
-      <section class="mobile-controls" aria-label="Directional controls">
-        <button data-direction="up" aria-label="Move up">Up</button>
-        <div class="mobile-controls-row">
-          <button data-direction="left" aria-label="Move left">Left</button>
-          <button data-direction="down" aria-label="Move down">Down</button>
-          <button data-direction="right" aria-label="Move right">Right</button>
-        </div>
-      </section>
-    </main>
-
-    <script type="module" src="./src/main.js"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
