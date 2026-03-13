@@ -54,6 +54,7 @@ body {
 }
 
 .cell {
+  position: relative;
   border: 1px solid #f1f1f1;
   background: #ffffff;
 }
@@ -67,13 +68,35 @@ body {
 }
 
 .cell.food {
-  background: #e63946;
+  background: #ffffff;
+}
+
+.cell.food::after {
+  content: "";
+  position: absolute;
+  inset: 22% 14%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffb3ba 0 14%, #e63946 15% 72%, #b11f2a 73% 100%);
+  transform: scaleX(0.78);
 }
 
 .controls {
   margin-top: 0.75rem;
   display: flex;
   gap: 0.5rem;
+}
+
+.speed-controls {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.speed-label {
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 button {
@@ -83,6 +106,12 @@ button {
   font: inherit;
   padding: 0.5rem 0.8rem;
   cursor: pointer;
+}
+
+.speed-btn.is-active {
+  background: #1b4332;
+  border-color: #1b4332;
+  color: #ffffff;
 }
 
 .mobile-controls {

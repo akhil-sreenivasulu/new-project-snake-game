@@ -7,18 +7,52 @@ import {
 
 const GRID_WIDTH = 16;
 const GRID_HEIGHT = 16;
-const TICK_MS = 140;
+const SPEEDS = {
+  slow: 220,
+  medium: 160,
+  fast: 110,
+};
+const HIGH_SCORE_KEY = "snake-high-score";
 
 const board = document.getElementById("game-board");
 const scoreElement = document.getElementById("score");
+const highScoreElement = document.getElementById("high-score");
 const statusElement = document.getElementById("status");
 const restartButton = document.getElementById("restart-btn");
 const pauseButton = document.getElementById("pause-btn");
 const mobileControls = document.querySelector(".mobile-controls");
+const speedButtons = Array.from(document.querySelectorAll(".speed-btn"));
 
 let state = createInitialState({ width: GRID_WIDTH, height: GRID_HEIGHT });
 let lastTick = performance.now();
 let audioContext = null;
+let currentSpeed = "slow";
+let highScore = loadHighScore();
+
+function loadHighScore() {
+  try {
+    const stored = window.localStorage.getItem(HIGH_SCORE_KEY);
+    const parsed = Number.parseInt(stored ?? "0", 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveHighScore(score) {
+  try {
+    window.localStorage.setItem(HIGH_SCORE_KEY, String(score));
+  } catch {}
+}
+
+function syncHighScore(score) {
+  if (score <= highScore) {
+    return;
+  }
+
+  highScore = score;
+  saveHighScore(highScore);
+}
 
 function getAudioContext() {
   if (!window.AudioContext && !window.webkitAudioContext) {
@@ -43,10 +77,16 @@ function playEatSound() {
     return;
   }
 
-  const noiseBuffer = context.createBuffer(1, context.sampleRate * 0.12, context.sampleRate);
+  const durationSeconds = 0.16;
+  const noiseBuffer = context.createBuffer(
+    1,
+    context.sampleRate * durationSeconds,
+    context.sampleRate,
+  );
   const channel = noiseBuffer.getChannelData(0);
   for (let index = 0; index < channel.length; index += 1) {
-    channel[index] = (Math.random() * 2 - 1) * 0.35;
+    const fade = 1 - index / channel.length;
+    channel[index] = (Math.random() * 2 - 1) * 0.28 * fade;
   }
 
   const source = context.createBufferSource();
@@ -54,20 +94,21 @@ function playEatSound() {
 
   const filter = context.createBiquadFilter();
   filter.type = "bandpass";
-  filter.frequency.setValueAtTime(1400, context.currentTime);
-  filter.Q.setValueAtTime(1.5, context.currentTime);
+  filter.frequency.setValueAtTime(2200, context.currentTime);
+  filter.frequency.exponentialRampToValueAtTime(1400, context.currentTime + durationSeconds);
+  filter.Q.setValueAtTime(3.2, context.currentTime);
 
   const gain = context.createGain();
   gain.gain.setValueAtTime(0.001, context.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.07, context.currentTime + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.12);
+  gain.gain.exponentialRampToValueAtTime(0.055, context.currentTime + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + durationSeconds);
 
   source.connect(filter);
   filter.connect(gain);
   gain.connect(context.destination);
 
   source.start();
-  source.stop(context.currentTime + 0.12);
+  source.stop(context.currentTime + durationSeconds);
 }
 
 function cellClassName(x, y) {
@@ -100,6 +141,7 @@ function renderBoard() {
 
 function renderHud() {
   scoreElement.textContent = String(state.score);
+  highScoreElement.textContent = String(highScore);
   if (state.gameOver) {
     statusElement.textContent = "Game over";
   } else if (state.paused) {
@@ -113,6 +155,12 @@ function renderHud() {
 function render() {
   renderHud();
   renderBoard();
+}
+
+function renderSpeedControls() {
+  speedButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.speed === currentSpeed);
+  });
 }
 
 function restart() {
@@ -151,8 +199,9 @@ function handleKeydown(event) {
 }
 
 function loop(now) {
-  if (now - lastTick >= TICK_MS) {
+  if (now - lastTick >= SPEEDS[currentSpeed]) {
     state = advance(state);
+    syncHighScore(state.score);
     if (state.ateFood) {
       playEatSound();
     }
@@ -167,6 +216,19 @@ pauseButton.addEventListener("click", () => {
   getAudioContext();
   state = togglePause(state);
   renderHud();
+});
+
+speedButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const nextSpeed = button.dataset.speed;
+    if (!nextSpeed || !(nextSpeed in SPEEDS)) {
+      return;
+    }
+
+    currentSpeed = nextSpeed;
+    lastTick = performance.now();
+    renderSpeedControls();
+  });
 });
 
 if (mobileControls) {
@@ -185,4 +247,5 @@ if (mobileControls) {
 window.addEventListener("keydown", handleKeydown, { passive: false });
 
 render();
+renderSpeedControls();
 requestAnimationFrame(loop);

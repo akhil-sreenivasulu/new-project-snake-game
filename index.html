@@ -12,6 +12,7 @@
         <h1>Snake</h1>
         <div class="hud-meta">
           <p>Score: <span id="score">0</span></p>
+          <p>High score: <span id="high-score">0</span></p>
           <p id="status">Running</p>
         </div>
       </header>
@@ -26,6 +27,13 @@
       <section class="controls" aria-label="Game controls">
         <button id="restart-btn" type="button">Restart</button>
         <button id="pause-btn" type="button">Pause</button>
+      </section>
+
+      <section class="speed-controls" aria-label="Speed controls">
+        <span class="speed-label">Speed</span>
+        <button class="speed-btn is-active" data-speed="slow" type="button">Slow</button>
+        <button class="speed-btn" data-speed="medium" type="button">Medium</button>
+        <button class="speed-btn" data-speed="fast" type="button">Fast</button>
       </section>
 
       <section class="mobile-controls" aria-label="Directional controls">
