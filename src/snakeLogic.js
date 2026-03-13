@@ -48,6 +48,7 @@ function createInitialState({ width, height, rng = Math.random }) {
     score: 0,
     gameOver: false,
     paused: false,
+    ateFood: false,
   };
 }
 
@@ -72,34 +73,32 @@ function nextHead(head, direction) {
   return { x: head.x + delta.x, y: head.y + delta.y };
 }
 
-function outOfBounds(position, width, height) {
-  return (
-    position.x < 0 ||
-    position.y < 0 ||
-    position.x >= width ||
-    position.y >= height
-  );
+function wrapPosition(position, width, height) {
+  return {
+    x: (position.x + width) % width,
+    y: (position.y + height) % height,
+  };
 }
 
 function advance(state, rng = Math.random) {
   if (state.gameOver || state.paused) {
-    return state;
+    return { ...state, ateFood: false };
   }
 
   const direction = state.pendingDirection;
   const currentHead = state.snake[0];
-  const newHead = nextHead(currentHead, direction);
-
-  if (outOfBounds(newHead, state.width, state.height)) {
-    return { ...state, direction, gameOver: true };
-  }
+  const newHead = wrapPosition(
+    nextHead(currentHead, direction),
+    state.width,
+    state.height,
+  );
 
   const grows = state.food ? samePosition(newHead, state.food) : false;
   const bodyToCheck = grows ? state.snake : state.snake.slice(0, -1);
   const hitsSelf = bodyToCheck.some((segment) => samePosition(segment, newHead));
 
   if (hitsSelf) {
-    return { ...state, direction, gameOver: true };
+    return { ...state, direction, gameOver: true, ateFood: false };
   }
 
   const nextSnake = [newHead, ...state.snake];
@@ -117,7 +116,8 @@ function advance(state, rng = Math.random) {
     direction,
     food: nextFood,
     score: grows ? state.score + 1 : state.score,
-    gameOver: nextFood === null ? true : false,
+    gameOver: false,
+    ateFood: grows,
   };
 }
 

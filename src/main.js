@@ -18,6 +18,57 @@ const mobileControls = document.querySelector(".mobile-controls");
 
 let state = createInitialState({ width: GRID_WIDTH, height: GRID_HEIGHT });
 let lastTick = performance.now();
+let audioContext = null;
+
+function getAudioContext() {
+  if (!window.AudioContext && !window.webkitAudioContext) {
+    return null;
+  }
+
+  if (!audioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    audioContext = new AudioContextClass();
+  }
+
+  if (audioContext.state === "suspended") {
+    audioContext.resume().catch(() => {});
+  }
+
+  return audioContext;
+}
+
+function playEatSound() {
+  const context = getAudioContext();
+  if (!context) {
+    return;
+  }
+
+  const noiseBuffer = context.createBuffer(1, context.sampleRate * 0.12, context.sampleRate);
+  const channel = noiseBuffer.getChannelData(0);
+  for (let index = 0; index < channel.length; index += 1) {
+    channel[index] = (Math.random() * 2 - 1) * 0.35;
+  }
+
+  const source = context.createBufferSource();
+  source.buffer = noiseBuffer;
+
+  const filter = context.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.setValueAtTime(1400, context.currentTime);
+  filter.Q.setValueAtTime(1.5, context.currentTime);
+
+  const gain = context.createGain();
+  gain.gain.setValueAtTime(0.001, context.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.07, context.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.12);
+
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(context.destination);
+
+  source.start();
+  source.stop(context.currentTime + 0.12);
+}
 
 function cellClassName(x, y) {
   if (state.food && state.food.x === x && state.food.y === y) {
@@ -71,6 +122,7 @@ function restart() {
 }
 
 function handleDirectionInput(direction) {
+  getAudioContext();
   state = setDirection(state, direction);
 }
 
@@ -101,6 +153,9 @@ function handleKeydown(event) {
 function loop(now) {
   if (now - lastTick >= TICK_MS) {
     state = advance(state);
+    if (state.ateFood) {
+      playEatSound();
+    }
     lastTick = now;
     render();
   }
@@ -109,6 +164,7 @@ function loop(now) {
 
 restartButton.addEventListener("click", restart);
 pauseButton.addEventListener("click", () => {
+  getAudioContext();
   state = togglePause(state);
   renderHud();
 });
